@@ -5,6 +5,7 @@ from layers.Transformer_EncDec import Decoder, DecoderLayer, Encoder, EncoderLay
 from layers.SelfAttention_Family import FullAttention, AttentionLayer
 from layers.Embed import DataEmbedding
 import numpy as np
+from einops import rearrange
 
 class Configs():
     def __init__(self):
@@ -13,14 +14,14 @@ class Configs():
         # self.seq_len = 1024
         self.output_attention = False
         self.enc_in = 5
-        self.d_model = 128 * 2
+        self.d_model = 128 * 5
         self.embed = 'fixed' # 不用
         self.freq = 'h' # 不用
         # self.use_norm = False
         self.dropout = 0.
         self.n_heads = 2
-        self.e_layers = 20
-        self.d_ff = self.d_model * 2
+        self.e_layers = 8
+        self.d_ff = self.d_model
         self.activation = 'relu'
         self.num_class = 12
         
@@ -35,13 +36,15 @@ class Model(nn.Module):
         super(Model, self).__init__()
         if configs is None:
             configs = Configs()
+        self.wide_value_emb = wide_value_emb
             
         self.task_name = configs.task_name
         self.pred_len = configs.pred_len
         self.output_attention = configs.output_attention
-        # Embedding
-        self.enc_embedding = DataEmbedding(configs.enc_in, configs.d_model, configs.embed, configs.freq,
-                                           configs.dropout)
+        if not self.wide_value_emb:
+            # Embedding
+            self.enc_embedding = DataEmbedding(configs.enc_in, configs.d_model, configs.embed, configs.freq,
+                                            configs.dropout)
         # Encoder
         self.encoder = Encoder(
             [
@@ -134,8 +137,13 @@ class Model(nn.Module):
         return output
     
     def token_classification(self, x_enc):
-        # Embedding
-        enc_out = self.enc_embedding(x_enc, None)
+        if self.wide_value_emb:
+            # x: [B, L=1024, M=5, pos_D=128] ->
+            enc_out = rearrange(x_enc, 'b l m d -> b l (m d)')
+        else:
+            # Embedding
+            enc_out = self.enc_embedding(x_enc, None)
+            
         enc_out, attns = self.encoder(enc_out, attn_mask=None)
 
         # Output

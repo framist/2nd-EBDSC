@@ -13,7 +13,7 @@ import random
 TAG_LEN = 12
 WINDOW_SIZE = 1024
 DROP_SIG_RATIO = 0.99
-DATA_NAME = f'PosAll'
+DATA_NAME = f'PosAllPRI'
 
 
 def read_txt(filepath):
@@ -109,7 +109,7 @@ def pre_reshape(df: pd.DataFrame, sample_ratio: float = None) -> pd.DataFrame:
     return df_scaled
 
 
-def to_dict(df: pd.DataFrame, reshap=False, noise=1., noise_snr=np.inf, if_pri=False):
+def to_dict(df: pd.DataFrame, reshap=False, noise=1., noise_snr=np.inf, if_pri=True):
     """数据转换为字典索引
     - 除以的超参数意义为「数字化单位」    
     reshap 需要有真实的 "TAG" 列

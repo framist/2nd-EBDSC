@@ -110,7 +110,7 @@ def acc_logit(logits: torch.Tensor, targets: torch.Tensor):
     return accuracy(predictions, targets)
 
 
-def confusion_matrix(predictions, targets, plot_name: str = None, tag_len: int = 12, average: str = 'weighted'):
+def confusion_matrix(predictions, targets, plot_name: str = None, tag_len: int = 12, average: str = 'weighted', if_save = True):
     """
     混淆矩阵
     """
@@ -141,7 +141,8 @@ def confusion_matrix(predictions, targets, plot_name: str = None, tag_len: int =
         plt.ylabel('target')
         plt.colorbar()
         plt.title(f'{plot_name}\n{log}')
-        plt.savefig(f'saved_figs/{plot_name}.png')
+        if if_save:
+            plt.savefig(f'saved_figs/{plot_name}.png')
         plt.show()
 
     return acc

@@ -12,13 +12,6 @@ from typing import List
 import datetime
 now = datetime.datetime.now().strftime('%b%d_%H-%M')
 
-from mix_data_pos_all import *
-# from mix_data_pos_all_manual import *
-# from mix_data_pos_all_air import *
-
-
-# from TCNmodelPosAll import ModernTCN_DC
-from ModernTCN import ModernTCNnew
 
 # plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei']  # 中文字体设置
 # plt.rcParams['axes.unicode_minus'] = False  # 负号显示设置
@@ -43,7 +36,7 @@ Pre: 89.584, Rec: 89.008, Acc: 88.563 -> Pre: 89.700, Rec: 89.632, Acc: 90.007
 # %% [markdown]
 # 命令行参数示例：`python tcn_pos_all.py --cuda 4 --batch_size 50 --num_layers 24 --ratio 2`
 import argparse
-parser = argparse.ArgumentParser(description='Code for my modernTCN -- pos all',
+parser = argparse.ArgumentParser(description='Code for my modernTCN -- by framist',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--cuda', type=int, default=0, help='所使用的 cuda 设备，暂不支持多设备并行')
 parser.add_argument('--num_layers', type=int, default=24, help='layers of modernTCN')
@@ -58,7 +51,10 @@ parser.add_argument('--max_epoch', type=int, default=400, help='max train epoch'
 parser.add_argument('--mix_test', action='store_true', default=False, help='是否混入测试集训练')
 
 # 对照、消融实验的一些参数
-parser.add_argument('--learnable_emb', action='store_true', default=False, help='是否使用可学习的 emb（原 modernTCN）')
+parser.add_argument('--learnable_emb', action='store_true', default=False, help='是否使用可学习的 emb（原 modernTCN）而非 WVE')
+parser.add_argument('--model', type=str, default='modernTCN', help='backbone 模型选择')
+parser.add_argument('--manual', action='store_true', default=False, help='是否手动构建交织，需要 learnable_emb')
+parser.add_argument('--pri', action='store_true', default=False, help='是否使用 PRI 而非 TOA')
 
 parser_args = parser.parse_args()
 
@@ -84,6 +80,13 @@ HARD_RATIO = parser_args.hard
 RE_GEN_DATA_EPOCH = parser_args.rg
 MAX_TRAIN_EPOCH = parser_args.max_epoch
 
+if parser_args.manual and parser_args.learnable_emb:
+    from mix_data_pos_all_manual import *
+elif parser_args.pri:
+    from mix_data_pos_all_PRI import *
+else:
+    from mix_data_pos_all import *
+
 # TCN: modern TCN
 # Linear 线性（模）值域宽尺度特征提取
 # mask（mean 掩码）掩码难样本处理 randMask 随机掩码
@@ -91,7 +94,8 @@ MAX_TRAIN_EPOCH = parser_args.max_epoch
 # MT: 混入测试集 mix test
 # Easy: 2,2,1,2
 # Hr_: hard ratio + m r c (掩码方式)
-NAME = f'TCN_{parser_args.ls}KS{parser_args.ss}_{D}D{NUM_LAYERS}L{R}R{DROP_OUT*10:.0f}dp_{DATA_NAME}{HARD_RATIO}Hrr{RE_GEN_DATA_EPOCH}R'
+NAME = f'{DATA_NAME}{HARD_RATIO}Hrr{RE_GEN_DATA_EPOCH}R'
+
 
 IF_MIX_TEST = parser_args.mix_test
 if IF_MIX_TEST:
@@ -107,25 +111,120 @@ else:
 from my_tools import *
 seed_everything()
 
-# %% 模型选择
+# %% 模型、优化器选择
+if parser_args.model == 'modernTCN':
+    NAME = f'TCN_{parser_args.ls}KS{parser_args.ss}_{D}D{NUM_LAYERS}L{R}R{DROP_OUT*10:.0f}dp_{NAME}'
+    # from TCNmodelPosAll import ModernTCN_DC
+    from ModernTCN import ModernTCNnew
+    # 不可结构重参数化：
+    # model = ModernTCN_DC(INPUT_CHANNELS, WINDOW_SIZE, TAG_LEN, D=D,
+    #                      P=P, S=S, kernel_size=kernel_size, r=R, num_layers=NUM_LAYERS, pos_D=POS_D).to(device)
 
-# 不可结构重参数化：
-# model = ModernTCN_DC(INPUT_CHANNELS, WINDOW_SIZE, TAG_LEN, D=D,
-#                      P=P, S=S, kernel_size=kernel_size, r=R, num_layers=NUM_LAYERS, pos_D=POS_D).to(device)
+    # 可结构重参数化：
+    model = ModernTCNnew(INPUT_CHANNELS, 
+                        TAG_LEN, 
+                        D=D,
+                        ffn_ratio=R, 
+                        num_layers=NUM_LAYERS, 
+                        large_sizes=parser_args.ls,
+                        small_size=parser_args.ss,
+                        backbone_dropout=0.,
+                        head_dropout=DROP_OUT,
+                        stem = IF_LAERNABLE_EMB
+                        ).to(device)
+    
+    
+    # * CNN 使用的优化器
+    
+    learn_rate = 4e-3
+    # learn_rate = 2e-4
+    # MIN_LR = 1e-4
+    # optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, momentum=0.99)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learn_rate)
 
-# 可结构重参数化：
-model = ModernTCNnew(INPUT_CHANNELS, 
-                     TAG_LEN, 
-                     D=D,
-                     ffn_ratio=R, 
-                     num_layers=NUM_LAYERS, 
-                     large_sizes=parser_args.ls,
-                     small_size=parser_args.ss,
-                     backbone_dropout=0.,
-                     head_dropout=DROP_OUT,
-                     stem = IF_LAERNABLE_EMB
-                     ).to(device)
+    # < 50  e 0.004
+    # < 100 e 0.002
+    # < 150 e 0.001
+    # < 200 e 0.0005
+    # < 250 e 0.00025
+    # < 300 e 0.000125
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50 // (BATCH_SIZE // 50), gamma=0.5)
 
+
+elif parser_args.model == 'Transformer':
+    if not IF_LAERNABLE_EMB:
+        D = 128 * 5
+        NAME = f'TF_{D}D{NUM_LAYERS}L{R}R{DROP_OUT*10:.0f}dp_{NAME}'
+        from models.Transformer import Model, Configs
+        configs = Configs()
+        configs.d_model = D
+        configs.e_layers = NUM_LAYERS
+        configs.d_ff = D * R
+        configs.n_heads = 4
+        configs.dropout = DROP_OUT
+        
+        model = Model(configs=configs, wide_value_emb=True).to(device)
+    
+    else:
+        D = 128 * 2
+        NAME = f'TF_{D}D{NUM_LAYERS}L{R}R{DROP_OUT*10:.0f}dp_{NAME}'
+        from models.Transformer import Model, Configs
+        configs = Configs()
+        configs.d_model = D
+        configs.e_layers = NUM_LAYERS
+        configs.d_ff = D * R
+        configs.n_heads = 2
+        configs.dropout = DROP_OUT
+        
+        model = Model(configs=configs, wide_value_emb=False).to(device)
+        
+    # * TF 使用的优化器
+    learn_rate = 0.
+    optimizer = torch.optim.RAdam(model.parameters(), lr=learn_rate)
+    lr_lambda = lambda step: (D ** -0.5) * min((step+1) ** -0.5, (step+1) * 50 ** -1.5) 
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    
+elif parser_args.model == 'iTransformer':
+    assert IF_LAERNABLE_EMB == True, "iTransformer 模型必须使用可学习的 emb. TODO"
+    D = 128 * 2
+    NAME = f'iTransformer_{NUM_LAYERS}L{R}R{DROP_OUT*10:.0f}dp_{NAME}'
+    from models.iTransformer import Model, Configs
+    configs = Configs()
+    configs.e_layers = NUM_LAYERS
+    configs.d_ff = configs.d_model * R
+    configs.dropout = DROP_OUT
+    
+    model = Model(configs=configs, wide_value_emb=False).to(device)
+        
+    # * TF 使用的优化器
+    learn_rate = 0.
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learn_rate)
+    lr_lambda = lambda step: (D ** -0.5) * min((step+1) ** -0.5, (step+1) * 50 ** -1.5) 
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    
+elif parser_args.model == 'TimesNet':
+    assert IF_LAERNABLE_EMB == True, "TimesNet 模型必须使用可学习的 emb. TODO"
+    
+    D = 128
+    NAME = f'TimesNet_{D}D{NUM_LAYERS}L{R}R{DROP_OUT*10:.0f}dp_{NAME}'
+    from models.TimesNet import Model, Configs
+    configs = Configs()
+    configs.d_model = D
+    configs.e_layers = NUM_LAYERS
+    configs.d_ff = D * R
+    configs.dropout = DROP_OUT
+    
+    
+    model = Model(configs=configs, wide_value_emb=False).to(device)
+    
+    # 优化器
+    learn_rate = 0.001
+    optimizer = torch.optim.RAdam(model.parameters(), lr=learn_rate)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.1)
+    
+else:
+    raise ValueError('model 选择错误')
 
 # %%
 # 训练数据准备
@@ -241,28 +340,6 @@ def epoch_test_loss(model, validing_loader, testing_loader_mini):
 
 # %%
 
-
-learn_rate = 4e-3
-# learn_rate = 2e-4
-# MIN_LR = 1e-4
-# optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, momentum=0.99)
-# optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
-optimizer = torch.optim.AdamW(model.parameters(), lr=learn_rate)
-
-
-from torch.optim.lr_scheduler import StepLR
-
-class StepLRWithMinLR(StepLR):
-    def __init__(self, optimizer, step_size, gamma=0.1, min_lr=0.0001, last_epoch=-1):
-        self.min_lr = min_lr
-        super(StepLRWithMinLR, self).__init__(optimizer, step_size, gamma, last_epoch)
-
-    def get_lr(self):
-        lr = [base_lr * self.gamma ** (self.last_epoch // self.step_size) for base_lr in self.base_lrs]
-        return [max(lr_val, self.min_lr) for lr_val in lr]
-    
-# %%
-
 loss_record = {"train": [], "vaild": [], "test": [], "acc": []}
 
 epoch_start = 0 # 这里可以直接加载接着训练
@@ -273,14 +350,6 @@ epoch_start = 0 # 这里可以直接加载接着训练
 # epoch_start, loss_record = load_checkpoint(model, f'saved_models/TCN_51KS5_128D24L2R0dp_2lr_PosAll75Hr1R_MT_mloss_0.129_cp-822.pth', None, device)
 # epoch_start, loss_record = load_checkpoint(model, f'saved_models/TCN_linear_mask_128D24L2R_POS_ALL_MT_mloss_0.17166166976094246_cp-295.pth', None, device)
 # _, _ = load_checkpoint(model, f'./saved_models/ModernTCN_DC_modmix_cp-221.pth')
-
-# < 50  e 0.004
-# < 100 e 0.002
-# < 150 e 0.001
-# < 200 e 0.0005
-# < 250 e 0.00025
-# < 300 e 0.000125
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
 
 # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 25)
 
@@ -419,15 +488,7 @@ with torch.no_grad():
 
 
 # %%
-# 打印参数
-print(f'{NAME}_lr={learn_rate}_batch_size={BATCH_SIZE}_epoch={epoch+1}_loss={loss_record["test"][-1]}')
-
-
-# %%
 # 释放显卡内存
 torch.cuda.empty_cache()
-
-# %%
-
 
 

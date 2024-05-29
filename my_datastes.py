@@ -35,7 +35,14 @@ class MyDataSet(Data.Dataset):
     def __getitem__(self, idx):
         
         if not hasattr(self, 'd_model'):
-            inputs = self.inputs[idx] / 65536 # TODO
+            inputs = self.inputs[idx]
+            # 除第一个维度，每一个维度正则化
+            inputs = (inputs - inputs.mean(axis=0)) / inputs.std(axis=0)
+            inputs[:, 0] = ( self.targets[idx][:, 0] / 5e5  - 0.0002) / 0.0005
+            # inputs = self.inputs[idx] / 65536 # old use
+            # inputs = self.inputs[idx]
+            # # !!! input[:, 0] = label
+            # inputs[:, 0] = self.targets[idx][:, 0]
             return inputs, self.targets[idx]
 
         # * POS [1024, 5] -> [1024, 5, 128]

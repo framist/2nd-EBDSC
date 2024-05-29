@@ -5,28 +5,53 @@ from layers.Transformer_EncDec import Encoder, EncoderLayer
 from layers.SelfAttention_Family import FullAttention, AttentionLayer
 from layers.Embed import DataEmbedding_inverted
 import numpy as np
+from einops import rearrange
 
-
+class Configs():
+    def __init__(self):
+        self.task_name = "token_classification"
+        self.pred_len = None
+        self.seq_len = 1024
+        self.output_attention = False
+        self.enc_in = 5
+        self.d_model = 2048
+        self.embed = 'fixed' # 不用
+        self.freq = 'h' # 不用
+        # self.use_norm = False
+        self.dropout = 0.
+        self.n_heads = 4
+        self.e_layers = 16
+        self.d_ff = self.d_model
+        self.activation = 'relu'
+        self.num_class = 12
+        
+        
 class Model(nn.Module):
     """
     Paper link: https://arxiv.org/abs/2310.06625
     """
 
-    def __init__(self, configs):
+    def __init__(self, configs=None, wide_value_emb = False):
         super(Model, self).__init__()
+        if configs is None:
+            configs = Configs()
+        self.wide_value_emb = wide_value_emb
+        
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
         self.output_attention = configs.output_attention
-        # Embedding
-        self.enc_embedding = DataEmbedding_inverted(configs.seq_len, configs.d_model, configs.embed, configs.freq,
-                                                    configs.dropout)
+        
+        if not self.wide_value_emb:            
+            # Embedding
+            self.enc_embedding = DataEmbedding_inverted(configs.seq_len, configs.d_model, configs.embed, configs.freq,
+                                                        configs.dropout)
         # Encoder
         self.encoder = Encoder(
             [
                 EncoderLayer(
                     AttentionLayer(
-                        FullAttention(False, configs.factor, attention_dropout=configs.dropout,
+                        FullAttention(False, attention_dropout=configs.dropout,
                                       output_attention=configs.output_attention), configs.d_model, configs.n_heads),
                     configs.d_model,
                     configs.d_ff,
@@ -47,6 +72,10 @@ class Model(nn.Module):
             self.act = F.gelu
             self.dropout = nn.Dropout(configs.dropout)
             self.projection = nn.Linear(configs.d_model * configs.enc_in, configs.num_class)
+        if self.task_name == 'token_classification':
+            self.act = F.gelu
+            self.dropout = nn.Dropout(configs.dropout)
+            self.projection = nn.Linear(configs.d_model, configs.seq_len, bias=True)
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         # Normalization from Non-stationary Transformer
@@ -117,7 +146,28 @@ class Model(nn.Module):
         output = self.projection(output)  # (batch_size, num_classes)
         return output
 
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+    def token_classification(self, x_enc):
+        if self.wide_value_emb:
+            # x: [B, L=1024, M=5, pos_D=128] ->
+            enc_out = rearrange(x_enc, 'b l m d -> b l (m d)')
+        else:
+            # Embedding
+            # print(x_enc.shape)
+            
+            enc_out = self.enc_embedding(x_enc, None)
+            print(enc_out.shape)
+            
+        enc_out, attns = self.encoder(enc_out, attn_mask=None)
+
+        # Output
+        output = self.act(enc_out)
+        output = self.dropout(output)
+        output = self.projection(output).permute(0, 2, 1)  # (batch_size, seq_len, num_classes)
+        print(output.shape)
+        return output
+
+
+    def forward(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None, mask=None):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]  # [B, L, D]
@@ -130,6 +180,9 @@ class Model(nn.Module):
         if self.task_name == 'classification':
             dec_out = self.classification(x_enc, x_mark_enc)
             return dec_out  # [B, N]
+        if self.task_name == 'token_classification':
+            dec_out = self.token_classification(x_enc)
+            return dec_out  # [B, L, N]
         return None
 
 if __name__ == '__main__':
@@ -139,9 +192,11 @@ if __name__ == '__main__':
     
 
     # 对应的参数含义为 M, L, T, 4 个序列特征，96 原输入长度 96，预测输出长度为 192
-    input = torch.rand(10, 1024, 5, 128).cuda()
-    # input = torch.rand(10, 1024, 5).cuda()
-    model = Model(wide_value_emb=True).cuda()
+    # input = torch.rand(10, 1024, 5, 128).cuda()
+    # model = Model(wide_value_emb=True).cuda()
+    
+    input = torch.rand(10, 1024, 5).cuda()
+    model = Model(wide_value_emb=False).cuda()
     
     print("模型参数量：", sum(p.numel() for p in model.parameters() if p.requires_grad))
     
