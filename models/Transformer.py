@@ -12,13 +12,17 @@ class Configs():
         self.pred_len = None
         # self.seq_len = 1024
         self.output_attention = False
+        self.enc_in = 5
+        self.d_model = 128 * 2
+        self.embed = 'fixed' # 不用
+        self.freq = 'h' # 不用
         # self.use_norm = False
-        # self.dropout = 0.
-        # self.d_model = 128
-        # self.n_heads = 4
-        # self.e_layers = 8
-        # self.d_ff = 128*2
-        # self.activation = 'relu'
+        self.dropout = 0.
+        self.n_heads = 2
+        self.e_layers = 20
+        self.d_ff = self.d_model * 2
+        self.activation = 'relu'
+        self.num_class = 12
         
 class Model(nn.Module):
     """
@@ -27,7 +31,7 @@ class Model(nn.Module):
     Paper link: https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf
     """
 
-    def __init__(self, configs: Configs=None):
+    def __init__(self, configs: Configs=None, wide_value_emb = False):
         super(Model, self).__init__()
         if configs is None:
             configs = Configs()
@@ -43,7 +47,7 @@ class Model(nn.Module):
             [
                 EncoderLayer(
                     AttentionLayer(
-                        FullAttention(False, configs.factor, attention_dropout=configs.dropout,
+                        FullAttention(False, attention_dropout=configs.dropout,
                                       output_attention=configs.output_attention), configs.d_model, configs.n_heads),
                     configs.d_model,
                     configs.d_ff,
@@ -61,11 +65,11 @@ class Model(nn.Module):
                 [
                     DecoderLayer(
                         AttentionLayer(
-                            FullAttention(True, configs.factor, attention_dropout=configs.dropout,
+                            FullAttention(True, attention_dropout=configs.dropout,
                                           output_attention=False),
                             configs.d_model, configs.n_heads),
                         AttentionLayer(
-                            FullAttention(False, configs.factor, attention_dropout=configs.dropout,
+                            FullAttention(False, attention_dropout=configs.dropout,
                                           output_attention=False),
                             configs.d_model, configs.n_heads),
                         configs.d_model,
@@ -86,6 +90,10 @@ class Model(nn.Module):
             self.act = F.gelu
             self.dropout = nn.Dropout(configs.dropout)
             self.projection = nn.Linear(configs.d_model * configs.seq_len, configs.num_class)
+        if self.task_name == 'token_classification':
+            self.act = F.gelu
+            self.dropout = nn.Dropout(configs.dropout)
+            self.projection = nn.Linear(configs.d_model, configs.num_class, bias=True)
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         # Embedding
@@ -124,8 +132,19 @@ class Model(nn.Module):
         output = output.reshape(output.shape[0], -1)  # (batch_size, seq_length * d_model)
         output = self.projection(output)  # (batch_size, num_classes)
         return output
+    
+    def token_classification(self, x_enc):
+        # Embedding
+        enc_out = self.enc_embedding(x_enc, None)
+        enc_out, attns = self.encoder(enc_out, attn_mask=None)
 
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        # Output
+        output = self.act(enc_out)
+        output = self.dropout(output)
+        output = self.projection(output)  # (batch_size, seq_len, num_classes)
+        return output
+
+    def forward(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None, mask=None):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]  # [B, L, D]
@@ -138,4 +157,24 @@ class Model(nn.Module):
         if self.task_name == 'classification':
             dec_out = self.classification(x_enc, x_mark_enc)
             return dec_out  # [B, N]
+        if self.task_name == 'token_classification':
+            dec_out = self.token_classification(x_enc)
+            return dec_out  # [B, L, N]
         return None
+
+
+if __name__ == '__main__':
+    from time import time
+
+    # 对应的参数含义为 M, L, T, 4 个序列特征，96 原输入长度 96，预测输出长度为 192
+    # input = torch.rand(10, 1024, 5, 128).cuda()
+    input = torch.rand(10, 1024, 5).cuda()
+    model = Model().cuda()
+    
+    print("模型参数量：", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    
+
+    start = time()
+    pred_series = model(input)
+    end = time()
+    print(pred_series.shape, f"time {end - start}")
