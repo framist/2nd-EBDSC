@@ -1,4 +1,4 @@
-![alt text](image.png)
+![alt text](asserts/image.png)
 
 # 2nd EBDSC
 
