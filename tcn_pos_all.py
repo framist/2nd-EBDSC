@@ -36,7 +36,7 @@ Pre: 89.584, Rec: 89.008, Acc: 88.563 -> Pre: 89.700, Rec: 89.632, Acc: 90.007
 # %% [markdown]
 # 命令行参数示例：`python tcn_pos_all.py --cuda 4 --batch_size 50 --num_layers 24 --ratio 2`
 import argparse
-parser = argparse.ArgumentParser(description='Code for my modernTCN -- by framist',
+parser = argparse.ArgumentParser(description='Code for 2nd EBDSC -- Wide-Value-Embs TCN -- by framist',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--cuda', type=int, default=0, help='所使用的 cuda 设备，暂不支持多设备并行')
 parser.add_argument('--num_layers', type=int, default=24, help='layers of modernTCN')
@@ -70,11 +70,11 @@ BATCH_SIZE = parser_args.batch_size
 INPUT_CHANNELS = 5 
 # TODO 结构重参数化
 # kernel_size = 51  # 51 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35
-POS_D = D = 128  # embedding 这里是通道上的建模，不是时间上的建模你的卷积只要合适就行，不要太大了，但都是属于参数，提升没有多少，关键是域适应方法的集成  你要知道是 64*1024*512 的参数量很大的哈哈
+POS_D = D = 128  
 P = 1
 S = 1
 R = parser_args.ratio
-NUM_LAYERS = parser_args.num_layers  # 不同的层数对应模型大小不同，参数量也不同，要注意
+NUM_LAYERS = parser_args.num_layers 
 DROP_OUT = parser_args.dp # dropout 仅指分类头的。不能在主干。ref. https://arxiv.org/abs/1801.05134v1
 HARD_RATIO = parser_args.hard
 RE_GEN_DATA_EPOCH = parser_args.rg
