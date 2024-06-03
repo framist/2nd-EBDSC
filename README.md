@@ -6,7 +6,7 @@
 *本归档为第二届“火眼金睛”电磁大数据非凡挑战赛（EBDSC）金奖作品。*
 
 > [!WARNING]
-> 本文档仍未完成，正在更新中...
+> 本仓库与本文档仍未完成，正在更新中...
 
 
 ## Wide-Value-Embs TCN - Proposed Method
