@@ -68,7 +68,7 @@ print("CUDA Available: ", torch.cuda.is_available(), 'use:', device)
 TAG_LEN = 12
 BATCH_SIZE = parser_args.batch_size
 INPUT_CHANNELS = 5 
-# TODO 结构重参数化
+
 # kernel_size = 51  # 51 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35
 POS_D = D = 128  
 P = 1
