@@ -1,4 +1,4 @@
-![alt text](asserts/image.png)
+![logo of Wide-Value-Embs TCN](asserts/image.png)
 
 # 2nd EBDSC
 
