@@ -6,7 +6,7 @@ import numpy as np
 class MyDataSet(Data.Dataset):
     """自定义数据集函数"""
 
-    def __init__(self, inputs, targets, hard=None, pos_d=128, if_emb=True):
+    def __init__(self, inputs, targets, hard=None, pos_d=128, if_emb=True, f_mask=lambda x: torch.rand_like(x) * 2 - 1):
         super(MyDataSet, self).__init__()
         self.inputs = inputs
         self.targets = targets
@@ -29,6 +29,11 @@ class MyDataSet(Data.Dataset):
             self.d_step * np.log2(m)).astype(np.int64) + 1
         self.hard = hard
 
+        # def f_mask(x): return torch.mean(x, axis=0)
+        # f_mask = lambda x: torch.rand_like(x) * 2 - 1
+        # f_mask = lambda x: torch.zeros_like(x)
+        self.f_mask = f_mask
+        
     def __len__(self):
         return self.inputs.shape[0]
 
@@ -38,7 +43,7 @@ class MyDataSet(Data.Dataset):
             inputs = self.inputs[idx]
             # 除第一个维度，每一个维度正则化
             inputs = (inputs - inputs.mean(axis=0)) / inputs.std(axis=0)
-            inputs[:, 0] = ( self.targets[idx][:, 0] / 5e5  - 0.0002) / 0.0005
+            inputs[:, 0] = ( self.inputs[idx][:, 0] / 5e5  - 0.0002) / 0.0005
             # inputs = self.inputs[idx] / 65536 # old use
             # inputs = self.inputs[idx]
             # # !!! input[:, 0] = label
@@ -62,27 +67,25 @@ class MyDataSet(Data.Dataset):
             # pe[:, :, i::self.d_step] = torch.absolute((positions * self.div_term + 1 / self.d_step * i) % 1 - 0.5) * 2 - 1
 
         if self.hard:
-            # def f_mask(x): return torch.mean(x, axis=0)
-            f_mask = lambda x: torch.rand_like(x) * 2 - 1
-            # f_mask = lambda x: torch.zeros_like(x)
+
             if np.random.rand() < 1 * self.hard:
                 # 1 RF mimax in 5 ~ 28
                 mask_d_min = np.random.randint(self.d_mod(5), self.d_mod(60))
-                pe[:, 1, mask_d_min:] = f_mask(pe[:, 1, mask_d_min:])
+                pe[:, 1, mask_d_min:] = self.f_mask(pe[:, 1, mask_d_min:])
 
             if np.random.rand() < 1 * self.hard:
                 # 2 PW * 10 mimax in 6 ~ 50
                 mask_d_min = np.random.randint(self.d_mod(6), self.d_mod(100))
-                pe[:, 2, mask_d_min:] = f_mask(pe[:, 2, mask_d_min:])
+                pe[:, 2, mask_d_min:] = self.f_mask(pe[:, 2, mask_d_min:])
 
             if np.random.rand() < 0.1 * self.hard:
                 # 3 RF ?
-                pe[:, 3, :] = f_mask(pe[:, 3, :])
+                pe[:, 3, :] = self.f_mask(pe[:, 3, :])
 
             if np.random.rand() < 0.5 * self.hard:
                 # 4 DOA mimax in 6 ~ 7
                 mask_d_min = np.random.randint(self.d_mod(6), self.d_mod(14))
-                pe[:, 4, mask_d_min:] = f_mask(pe[:, 4, mask_d_min:])
+                pe[:, 4, mask_d_min:] = self.f_mask(pe[:, 4, mask_d_min:])
 
         return pe, self.targets[idx]
 
@@ -90,5 +93,5 @@ class MyDataSet(Data.Dataset):
 class MyDataSet_woEmb(MyDataSet):
     """自定义数据集函数"""
 
-    def __init__(self, inputs, targets, hard=None, pos_d=128):
+    def __init__(self, inputs, targets, hard=None, pos_d=128, f_mask=None):
         super(MyDataSet_woEmb, self).__init__(inputs, targets, hard, pos_d, False)

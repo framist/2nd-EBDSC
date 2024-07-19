@@ -10,7 +10,7 @@ import torch.utils.data as Data
 # %matplotlib widget
 from typing import List
 import datetime
-now = datetime.datetime.now().strftime('%b%d_%H-%M')
+now = datetime.datetime.now().strftime('%m%d_%H-%M')
 
 
 # plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei']  # 中文字体设置
@@ -55,6 +55,7 @@ parser.add_argument('--learnable_emb', action='store_true', default=False, help=
 parser.add_argument('--model', type=str, default='modernTCN', help='backbone 模型选择')
 parser.add_argument('--manual', action='store_true', default=False, help='是否手动构建交织，需要 learnable_emb')
 parser.add_argument('--pri', action='store_true', default=False, help='是否使用 PRI 而非 TOA')
+parser.add_argument('--fmask', type=str, default='r', help='mask 方式 r: randMask, m: meanMask, c: constMask')
 
 parser_args = parser.parse_args()
 
@@ -87,6 +88,13 @@ elif parser_args.pri:
 else:
     from mix_data_pos_all import *
 
+if parser_args.fmask == 'r':
+    F_MASK = lambda x: torch.rand_like(x) * 2 - 1
+elif parser_args.fmask == 'm':
+    F_MASK = lambda x: torch.mean(x, axis=0)
+elif parser_args.fmask == 'c':
+    F_MASK = lambda x: torch.zeros_like(x)
+
 # TCN: modern TCN
 # Linear 线性（模）值域宽尺度特征提取
 # mask（mean 掩码）掩码难样本处理 randMask 随机掩码
@@ -94,7 +102,7 @@ else:
 # MT: 混入测试集 mix test
 # Easy: 2,2,1,2
 # Hr_: hard ratio + m r c (掩码方式)
-NAME = f'{DATA_NAME}{HARD_RATIO}Hrr{RE_GEN_DATA_EPOCH}R'
+NAME = f'{DATA_NAME}{HARD_RATIO}Hr{parser_args.fmask}{RE_GEN_DATA_EPOCH}R'
 
 
 IF_MIX_TEST = parser_args.mix_test
@@ -228,19 +236,16 @@ else:
 
 # %%
 # 训练数据准备
-def make_data(d: List[List[np.ndarray]]):
+def make_data(d: List[List[np.ndarray]]) -> tuple[Tensor, Tensor]:
     """生成数据集
     Args:
         d 数据集
     Returns:
-        inputs2 = 特征
-        targets = [[TAG] * 时间窗长度] * 样本数 one-hot 编码
+        inputs = 特征
+        targets = 标签，从 0 开始
     """
     inputs = np.array([i[0] for i in d], dtype=np.float32)
     targets = np.array([i[-1] for i in d], dtype=np.int64) - 1
-
-    # 对 'TAG' 列的值 1~12 进行 one-hot 编码
-    # targets = np.eye(12)[targets - 1] #(原标签 -1) 作为索引，生成对应的单位矩阵
     
     return torch.FloatTensor(inputs), torch.LongTensor(targets)
 
@@ -262,7 +267,7 @@ def make_loader(batch_size, hard=1.):
         d_valid = mix_data_gen(df_list, 20, 50, 20, True)
     
     training_loader = Data.DataLoader(
-        MyDataSet(*make_data(d_train), hard=hard), batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+        MyDataSet(*make_data(d_train), hard=hard, f_mask=F_MASK), batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
     validing_loader = Data.DataLoader(
         MyDataSet(*make_data(d_valid), hard=None), batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
 
