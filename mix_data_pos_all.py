@@ -113,6 +113,7 @@ def to_dict(df: pd.DataFrame, reshap=False, noise=1., noise_snr=np.inf, if_pri=F
     """数据转换为字典索引
     - 除以的超参数意义为「数字化单位」    
     reshap 需要有真实的 "TAG" 列
+    noise_snr 需要有真实的 "TAG" 列 增加高斯噪声
     """
 
     def normalize(d: pd.Series) -> pd.Series:
@@ -156,7 +157,7 @@ def to_dict(df: pd.DataFrame, reshap=False, noise=1., noise_snr=np.inf, if_pri=F
             # DOA 变换
             df.loc[df["TAG"] == i+1, "DOA"] += np.random.uniform(0, 90) * noise
             
-            # 额外高斯噪声
+            # 额外高斯噪声 不需要 reshap == True
             if noise_snr < np.inf:
                 for tag in ["RF", "PW", "PA", "DOA"]:
                     di = df[df["TAG"] == i+1][tag]
@@ -169,7 +170,13 @@ def to_dict(df: pd.DataFrame, reshap=False, noise=1., noise_snr=np.inf, if_pri=F
 
         df["DOA"] += np.random.uniform(-60, 60) * noise
 
-
+    # 额外高斯噪声 不需要 reshap == True
+    if noise_snr < np.inf:
+        for i in range(TAG_LEN):  # 需要有真实的 "TAG" 列
+            for tag in ["RF", "PW", "PA", "DOA"]:
+                di = df[df["TAG"] == i+1][tag]
+                df.loc[df["TAG"] == i+1, tag] = add_noise(di, noise_snr)
+                    
     # * TOA or PRI
     if if_pri:
         d_2["PRI"] = df["TOA"].diff().fillna(0) * 5e5
@@ -256,16 +263,16 @@ def mix_data_gen(df_list: List[pd.DataFrame], size_1: int, size_2: int, n_jobs: 
     return mix_windows
 
 
-def _target_domain_job(df: pd.DataFrame, size_2):
+def _target_domain_job(df: pd.DataFrame, size_2, **kwargs):
     mixed_windows = []
     for _ in range(size_2):
         start = random.randint(0, len(df) - WINDOW_SIZE)
-        m2, m3 = to_dict(df[start:start + WINDOW_SIZE], reshap=False)
+        m2, m3 = to_dict(df[start:start + WINDOW_SIZE], reshap=False, **kwargs)
         mixed_windows.append([m2, m3])
     return mixed_windows
 
 
-def target_domain_data_gen(df: pd.DataFrame, size_1: int, size_2: int, n_jobs: int = -1) -> List:
+def target_domain_data_gen(df: pd.DataFrame, size_1: int, size_2: int, n_jobs: int = -1,**kwargs) -> List:
     """此时 to_dict 的 reshap: bool = False
     size_1 与 size_2 意义无区别，乘积为生成的数据量
     """
@@ -273,7 +280,7 @@ def target_domain_data_gen(df: pd.DataFrame, size_1: int, size_2: int, n_jobs: i
 
     # 并行生成混合窗口
     mixed_results = Parallel(n_jobs=n_jobs)(
-        delayed(_target_domain_job)(df, size_2) for _ in range(size_1)
+        delayed(_target_domain_job)(df, size_2, **kwargs) for _ in range(size_1)
     )
 
     for result in mixed_results:

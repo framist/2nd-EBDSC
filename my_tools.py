@@ -126,6 +126,7 @@ def confusion_matrix(predictions, targets, plot_name: str = None, tag_len: int =
     recall = recall_score(targets, predictions, average=average)
     f1 = f1_score(targets, predictions, average=average)
     log = f'Acc: {acc*100:.3f}, Pre: {precision*100:.3f}, Rec: {recall*100:.3f}, F1: {f1*100:.3f} [{average}]'
+    print(plot_name)
     print(log)
     
     if plot_name:
