@@ -87,10 +87,12 @@ f^{-1}_{\omega =1}(x) = (x + 1)/ 2
 
 ```math
 \mathrm{F}_\mathrm{mask}({\bf E}, d_{\mathrm{low}}) =
-\left\{\begin{matrix} 
-	\mathcal{R} \left( e_d \right)& d\ge d_{\mathrm{low}} \\
-	e_d& d<d_{\mathrm{low}}
-\end{matrix}\right.
+\left\{
+\begin{matrix} 
+    \mathcal{R} \left( e_d \right), & d \ge d_{\mathrm{low}} \\
+    e_d, & d < d_{\mathrm{low}}
+\end{matrix}
+\right.
 ```
 
 其中，$`\mathcal{R}(\cdot)`$ 表示产生一个相同、元素均匀分布在 $[0,1]$ 之间的张量，对应一般的 `rand_like` 函数。
@@ -100,6 +102,7 @@ f^{-1}_{\omega =1}(x) = (x + 1)/ 2
 
 ## 文件结构
 
+训练评估模型主要文件：`tcn_pos_all.py`
 
 ## 模型训练
 
