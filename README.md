@@ -3,16 +3,16 @@
 
 *本归档为第二届“火眼金睛”电磁大数据非凡挑战赛（2nd EBDSC）金奖作品。*
 
-> [!WARNING]
-> 目前仅包含主干训练代码，不包括数据集、一些后处理、模型评估等代码。
+> [!IMPORTANT]
+> **本仓库已归档**。目前仅包含主干训练代码，不包括数据集、一些后处理、模型评估等代码。
 > 
-> **本仓库已归档**。更进一步的说明与使用，请关注我们未来的工作：
+> 更进一步的说明与使用，请关注我们未来的工作：
 >
 > [WVEmbs with its Masking: A Method For Radar Signal Sorting](http://arxiv.org/abs/2503.13480)
 >
 > ...
 
-> [!INFO]
+> [!TIP]
 > [第三届“火眼金睛”电磁大数据非凡挑战赛（3rd EBDSC）作品](https://github.com/framist/3rd-EBDSC)
 
 # 方法
