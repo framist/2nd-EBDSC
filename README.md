@@ -107,6 +107,19 @@ f^{-1}_{\omega =1}(x) = (x + 1)/ 2
 
 训练评估模型主要文件：`tcn_pos_all.py`
 
+## 脚本使用指南
+
+> 由于本仓库为赛事归档，目录结构和脚本命名保持了当时的习惯。以下摘录在赛后复现中最常被查阅的核心脚本及其作用，便于快速定位：
+
+- **`tcn_pos_all.py`** — 训练与评估入口脚本。通过命令行参数管理 GPU 选择、批大小、TCN 层数、掩码策略等核心超参，并负责调度数据混合脚本与模型定义。推理或重新训练时从该脚本启动。常见示例：`python tcn_pos_all.py --cuda 0 --batch_size 64 --num_layers 24`。
+- **`mix_data_pos_all.py`** / `mix_data_pos_all_air.py` / `mix_data_pos_all_manual.py` / `mix_data_pos_all_PRI.py` — 生成训练用混叠样本的脚本族。它们实现不同的混合与增强策略（如 TOA、PRI、手工交织、空情场景等），均暴露 `read_dfs`、`pre_reshape`、`to_dict` 等函数供主脚本调用。可依照训练需求切换或扩展新的混叠方案。
+- **`ModernTCN.py`**（位于根目录）与 **`models/`**、**`layers/`** — 网络结构定义。`ModernTCNnew` 是主干模型，内部依赖 `layers/` 下的卷积、归一化与注意力实现；若需要替换或改进架构，可从这些文件入手。
+- **`my_datastes.py`** — 数据集封装。定义了 `MyDataSet` 与 `MyDataSet_woEmb`，负责窗口切片、标签编码以及宽值域嵌入的装载。自定义加载流程或替换嵌入方式时需同步修改此文件。
+- **`my_tools.py`** 与 **`utils/`** — 工具函数集合。包含随机种子设定、日志记录、度量统计等辅助功能，是脚本之间共享的基础工具库。
+- **`model_test.py`** 与 `saved_models/`、`saved_figs/` — 结果复现与可视化。`model_test.py` 给出离线评估流程示例，对应的权重与图像存放在 `saved_models/`、`saved_figs/` 供复核。
+
+> **提示：** 若要在归档基础上进行二次开发，建议先阅读 `tcn_pos_all.py` 的参数说明，再顺藤摸瓜查看其导入的混叠脚本、数据集与模型定义，能最快搭建起整体流程认知。
+
 ---
 
 # 竞赛信息
